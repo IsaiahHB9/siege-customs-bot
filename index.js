@@ -274,9 +274,10 @@ const commands = [
     .addUserOption(o => o.setName('winner5').setDescription('Winner #5'))
     .addIntegerOption(o => o.setName('kills5').setDescription('Kills for Winner #5').setMinValue(0))
     .addRoleOption(o => o.setName('champion_role').setDescription('Tournament champion role'))
-    .addIntegerOption(o => o.setName('currency').setDescription('Noctaly coins to award each winner').setMinValue(0))
-    .addStringOption(o => o.setName('notes').setDescription('Optional match notes')),
-    .addUserOption(o => o.setName('player6').setDescription('Player #6'))
+.addIntegerOption(o => o.setName('currency').setDescription('Noctaly coins to award each winner').setMinValue(0))
+.addStringOption(o => o.setName('notes').setDescription('Optional match notes'))
+
+.addUserOption(o => o.setName('player6').setDescription('Player #6'))
     .addIntegerOption(o => o.setName('kills6').setDescription('Kills for Player #6').setMinValue(0))
 
     .addUserOption(o => o.setName('player7').setDescription('Player #7'))
