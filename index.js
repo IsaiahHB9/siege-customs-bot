@@ -276,6 +276,20 @@ const commands = [
     .addRoleOption(o => o.setName('champion_role').setDescription('Tournament champion role'))
     .addIntegerOption(o => o.setName('currency').setDescription('Noctaly coins to award each winner').setMinValue(0))
     .addStringOption(o => o.setName('notes').setDescription('Optional match notes')),
+    .addUserOption(o => o.setName('player6').setDescription('Player #6'))
+    .addIntegerOption(o => o.setName('kills6').setDescription('Kills for Player #6').setMinValue(0))
+
+    .addUserOption(o => o.setName('player7').setDescription('Player #7'))
+    .addIntegerOption(o => o.setName('kills7').setDescription('Kills for Player #7').setMinValue(0))
+
+    .addUserOption(o => o.setName('player8').setDescription('Player #8'))
+    .addIntegerOption(o => o.setName('kills8').setDescription('Kills for Player #8').setMinValue(0))
+
+    .addUserOption(o => o.setName('player9').setDescription('Player #9'))
+    .addIntegerOption(o => o.setName('kills9').setDescription('Kills for Player #9').setMinValue(0))
+
+    .addUserOption(o => o.setName('player10').setDescription('Player #10'))
+    .addIntegerOption(o => o.setName('kills10').setDescription('Kills for Player #10').setMinValue(0))
 
   new SlashCommandBuilder()
     .setName('draft-create')
@@ -547,13 +561,24 @@ client.on('interactionCreate', async interaction => {
     const trophyRole = interaction.guild.roles.cache.find(r => r.name === 'Draft Winner');
 
     const winnerEntries = [1, 2, 3, 4, 5]
-      .map(n => {
-        const user = interaction.options.getUser(`winner${n}`);
-        const kills = interaction.options.getInteger(`kills${n}`);
-        if (!user) return null;
-        return { user, kills, number: n };
-      })
-      .filter(Boolean);
+  .map(n => {
+    const user = interaction.options.getUser(`winner${n}`);
+    const kills = interaction.options.getInteger(`kills${n}`);
+    if (!user) return null;
+    return { user, kills, winner: true };
+  })
+  .filter(Boolean);
+
+const otherEntries = [6, 7, 8, 9, 10]
+  .map(n => {
+    const user = interaction.options.getUser(`player${n}`);
+    const kills = interaction.options.getInteger(`kills${n}`);
+    if (!user) return null;
+    return { user, kills, winner: false };
+  })
+  .filter(Boolean);
+
+const allEntries = [...winnerEntries, ...otherEntries];
 
     for (const entry of winnerEntries) {
       if (entry.kills === null) {
@@ -564,7 +589,7 @@ client.on('interactionCreate', async interaction => {
 
     const stats = readJson(STATS_FILE);
 
-    for (const entry of winnerEntries) {
+    for (const entry of allEntries) {
       const u = entry.user;
 
       if (!stats[u.id]) stats[u.id] = { wins: 0, mvps: 0, kills: 0 };
@@ -572,7 +597,9 @@ client.on('interactionCreate', async interaction => {
       if (stats[u.id].mvps === undefined) stats[u.id].mvps = 0;
       if (stats[u.id].kills === undefined) stats[u.id].kills = 0;
 
-      stats[u.id].wins += 1;
+      if (entry.winner) {
+  stats[u.id].wins += 1;
+}
       stats[u.id].kills += entry.kills;
 
       const member = await interaction.guild.members.fetch(u.id).catch(() => null);
