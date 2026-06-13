@@ -113,12 +113,14 @@ client.on('interactionCreate', async interaction => {
         .setTitle(`🏆 ${gameTypeName} — Winner${winners.length > 1 ? 's' : ''} Declared!`)
         .setDescription(winnerUsers.map(u => `<@${u.id}>`).join(' · '))
         .addFields(
-          { name: '💰 Currency Reward', value: `${currency} coins each`, inline: true },
-          { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
-          trophyRole ? { name: '🛡️ Trophy Role', value: trophyRole.toString(), inline: true } : null,
-          championRole ? { name: '👑 Champion Role', value: championRole.toString(), inline: true } : null,
-          notes ? { name: '📝 Notes', value: notes } : null,
-        ).filter(Boolean)
+  [
+    { name: '💰 Currency Reward', value: `${currency} coins each`, inline: true },
+    { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
+    trophyRole ? { name: '🛡️ Trophy Role', value: trophyRole.toString(), inline: true } : null,
+    championRole ? { name: '👑 Champion Role', value: championRole.toString(), inline: true } : null,
+    notes ? { name: '📝 Notes', value: notes } : null,
+  ].filter(Boolean)
+)
         .setFooter({ text: `Declared by ${interaction.user.username}` })
         .setTimestamp();
 
