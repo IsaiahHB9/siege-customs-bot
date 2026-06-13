@@ -38,6 +38,12 @@ const MVP_ROLES = {
   15: '15x Draft MVP',
   20: '20x Draft MVP',
 };
+const SINGLE_GAME_KILL_ROLES = {
+  10: '10 Kills',
+  15: '15 Kills',
+  20: '20 Kills',
+  30: '30 Kills',
+};
 
 function readJson(file) {
   if (!fs.existsSync(file)) return {};
@@ -155,7 +161,14 @@ async function updateStatRoles(member, stats) {
       if (role) await member.roles.add(role).catch(console.error);
     }
   }
-
+async function updateSingleGameKillRoles(member, kills) {
+  for (const amount in SINGLE_GAME_KILL_ROLES) {
+    if (kills >= Number(amount)) {
+      const role = member.guild.roles.cache.find(r => r.name === SINGLE_GAME_KILL_ROLES[amount]);
+      if (role) await member.roles.add(role).catch(console.error);
+    }
+  }
+}
   for (const amount in MVP_ROLES) {
     if (mvpCount >= Number(amount)) {
       const role = member.guild.roles.cache.find(r => r.name === MVP_ROLES[amount]);
@@ -699,6 +712,8 @@ if (interaction.commandName === 'record-kills') {
     }
 
     stats[user.id].kills += kills;
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+if (member) await updateSingleGameKillRoles(member, kills);
   }
 
   writeJson(STATS_FILE, stats);
