@@ -264,15 +264,10 @@ const commands = [
       ))
     .addUserOption(o => o.setName('mvp').setDescription('MVP of the match').setRequired(true))
     .addUserOption(o => o.setName('winner1').setDescription('Winner #1').setRequired(true))
-    .addIntegerOption(o => o.setName('kills1').setDescription('Kills for Winner #1').setRequired(true).setMinValue(0))
     .addUserOption(o => o.setName('winner2').setDescription('Winner #2'))
-    .addIntegerOption(o => o.setName('kills2').setDescription('Kills for Winner #2').setMinValue(0))
     .addUserOption(o => o.setName('winner3').setDescription('Winner #3'))
-    .addIntegerOption(o => o.setName('kills3').setDescription('Kills for Winner #3').setMinValue(0))
     .addUserOption(o => o.setName('winner4').setDescription('Winner #4'))
-    .addIntegerOption(o => o.setName('kills4').setDescription('Kills for Winner #4').setMinValue(0))
     .addUserOption(o => o.setName('winner5').setDescription('Winner #5'))
-    .addIntegerOption(o => o.setName('kills5').setDescription('Kills for Winner #5').setMinValue(0))
     .addRoleOption(o => o.setName('champion_role').setDescription('Tournament champion role'))
 .addIntegerOption(o => o.setName('currency').setDescription('Noctaly coins to award each winner').setMinValue(0))
 .addStringOption(o => o.setName('notes').setDescription('Optional match notes')),
@@ -336,8 +331,10 @@ const commands = [
     .setDescription('Show the current map ban board'),
 
   new SlashCommandBuilder()
-    .setName('leaderboard')
-    new SlashCommandBuilder()
+  .setName('leaderboard')
+  .setDescription('Show the top players leaderboard'),
+
+new SlashCommandBuilder()
   .setName('record-kills')
   .setDescription('Record kills for players')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
@@ -355,8 +352,7 @@ const commands = [
   .addIntegerOption(o => o.setName('kills4').setDescription('Kills'))
 
   .addUserOption(o => o.setName('player5').setDescription('Player'))
-  .addIntegerOption(o => o.setName('kills5').setDescription('Kills'));
-    .setDescription('Show the top players leaderboard'),
+  .addIntegerOption(o => o.setName('kills5').setDescription('Kills')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -570,20 +566,15 @@ client.on('interactionCreate', async interaction => {
     const winnerEntries = [1, 2, 3, 4, 5]
   .map(n => {
     const user = interaction.options.getUser(`winner${n}`);
-    const kills = interaction.options.getInteger(`kills${n}`);
     if (!user) return null;
-    return { user, kills, winner: true };
+    return { user, winner: true };
   })
   .filter(Boolean);
 
 const allEntries = [...winnerEntries];
 
-    for (const entry of winnerEntries) {
-      if (entry.kills === null) {
-        await interaction.editReply(`❌ You must enter kills for Winner #${entry.number} (${entry.user.username}).`);
-        return;
-      }
-    }
+
+   
 
     const stats = readJson(STATS_FILE);
 
@@ -598,7 +589,7 @@ const allEntries = [...winnerEntries];
       if (entry.winner) {
   stats[u.id].wins += 1;
 }
-      stats[u.id].kills += entry.kills;
+    
 
       const member = await interaction.guild.members.fetch(u.id).catch(() => null);
 
@@ -638,7 +629,7 @@ const allEntries = [...winnerEntries];
 
     const noctalyCmds = winnerEntries.map(entry => `/eco add ${entry.user.id} ${currency}`);
     const resultsChannel = interaction.guild.channels.cache.get(RESULTS_CHANNEL_ID);
-    const killLines = winnerEntries.map(entry => `<@${entry.user.id}> — 🔫 ${entry.kills} kills`).join('\n');
+
 
     if (resultsChannel) {
       const embed = new EmbedBuilder()
@@ -648,7 +639,7 @@ const allEntries = [...winnerEntries];
         .addFields(
           [
             { name: '⭐ MVP', value: `<@${mvpUser.id}>`, inline: true },
-            { name: '🔫 Kills', value: killLines || 'No kills entered', inline: false },
+           
             { name: '💰 Currency Reward', value: `${currency} coins each`, inline: true },
             { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
             trophyRole ? { name: '🛡️ Draft Winner Role', value: trophyRole.toString(), inline: true } : null,
@@ -665,9 +656,9 @@ const allEntries = [...winnerEntries];
     const replyLines = [
       `✅ **Match recorded!** Winners declared for **${gameTypeName}**`,
       `⭐ MVP: ${mvpUser.username}`,
-      `🔫 **Kills:**\n${killLines}`,
+     
       trophyRole ? `🛡️ **Draft Winner** role assigned to all winners` : `⚠️ Draft Winner role was not found`,
-      `🔫 Kill Leaders updated`,
+    
       championRole && isTournament ? `👑 Champion role **${championRole.name}** assigned to tournament winners` : '',
       championRole && !isTournament ? `ℹ️ Champion role ignored because this was not a tournament` : '',
       currency > 0 ? `\n**Paste these Noctaly commands to award coins:**` : '',
