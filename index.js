@@ -352,7 +352,22 @@ new SlashCommandBuilder()
   .addIntegerOption(o => o.setName('kills4').setDescription('Kills'))
 
   .addUserOption(o => o.setName('player5').setDescription('Player'))
-  .addIntegerOption(o => o.setName('kills5').setDescription('Kills')),
+  .addIntegerOption(o => o.setName('kills5').setDescription('Kills'))
+
+  .addUserOption(o => o.setName('player6').setDescription('Player'))
+.addIntegerOption(o => o.setName('kills6').setDescription('Kills'))
+
+.addUserOption(o => o.setName('player7').setDescription('Player'))
+.addIntegerOption(o => o.setName('kills7').setDescription('Kills'))
+
+.addUserOption(o => o.setName('player8').setDescription('Player'))
+.addIntegerOption(o => o.setName('kills8').setDescription('Kills'))
+
+.addUserOption(o => o.setName('player9').setDescription('Player'))
+.addIntegerOption(o => o.setName('kills9').setDescription('Kills'))
+
+.addUserOption(o => o.setName('player10').setDescription('Player'))
+.addIntegerOption(o => o.setName('kills10').setDescription('Kills')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -673,7 +688,7 @@ if (interaction.commandName === 'record-kills') {
 
   const stats = readJson(STATS_FILE);
 
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 10; i++) {
     const user = interaction.options.getUser(`player${i}`);
     const kills = interaction.options.getInteger(`kills${i}`);
 
