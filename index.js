@@ -267,7 +267,7 @@ const commands = [
     .setName('declare-winner')
     .setDescription('Declare winners of a Siege custom game')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addStringOption(o => o.setName('gametype').setDescription('Name of the game type').setRequired(true))
+    .addStringOption(o => o.setName('host').setDescription('Host name').setRequired(true))
     .addStringOption(o => o.setName('format').setDescription('Match format').setRequired(true)
       .addChoices(
         { name: '1v1 Tournament', value: '1v1_tournament' },
@@ -348,6 +348,19 @@ const commands = [
   new SlashCommandBuilder()
   .setName('leaderboard')
   .setDescription('Show the top players leaderboard'),
+
+new SlashCommandBuilder()
+  .setName('remove-stats')
+  .setDescription('Remove wins, MVPs, or kills from a user')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+  .addUserOption(o => o.setName('user').setDescription('User to edit').setRequired(true))
+  .addStringOption(o => o.setName('stat').setDescription('Stat to remove').setRequired(true)
+    .addChoices(
+      { name: 'Wins', value: 'wins' },
+      { name: 'MVPs', value: 'mvps' },
+      { name: 'Kills', value: 'kills' }
+    ))
+  .addIntegerOption(o => o.setName('amount').setDescription('Amount to remove').setRequired(true).setMinValue(1)),
 
 new SlashCommandBuilder()
   .setName('record-kills')
@@ -584,8 +597,9 @@ client.on('interactionCreate', async interaction => {
   if (interaction.commandName === 'declare-winner') {
     await interaction.deferReply({ ephemeral: true });
 
-    const gameTypeName = interaction.options.getString('gametype');
+    const hostName = interaction.options.getString('host');
     const format = interaction.options.getString('format');
+    const matchName = `${hostName}'s ${format.replace(/_/g, ' ').toUpperCase()}`;
     const currency = interaction.options.getInteger('currency') ?? 0;
     const notes = interaction.options.getString('notes') ?? '';
     const championRole = interaction.options.getRole('champion_role');
@@ -664,7 +678,7 @@ const allEntries = [...winnerEntries];
     if (resultsChannel) {
       const embed = new EmbedBuilder()
         .setColor(0xF97316)
-        .setTitle(`🏆 ${gameTypeName} — Winner${winnerEntries.length > 1 ? 's' : ''} Declared!`)
+        .setTitle(`🏆 ${matchName} — Winner${winnerEntries.length > 1 ? 's' : ''} Declared!`)
         .setDescription(winnerEntries.map(entry => `<@${entry.user.id}>`).join(' · '))
         .addFields(
           [
@@ -684,7 +698,7 @@ const allEntries = [...winnerEntries];
     }
 
     const replyLines = [
-      `✅ **Match recorded!** Winners declared for **${gameTypeName}**`,
+      `✅ **Match recorded!** Winners declared for **${matchName}**`,
       `⭐ MVP: ${mvpUser.username}`,
      
       trophyRole ? `🛡️ **Draft Winner** role assigned to all winners` : `⚠️ Draft Winner role was not found`,
@@ -698,6 +712,36 @@ const allEntries = [...winnerEntries];
     await interaction.editReply({ content: replyLines });
     return;
   }
+  if (interaction.commandName === 'remove-stats') {
+  await interaction.deferReply({ ephemeral: true });
+
+  const user = interaction.options.getUser('user');
+  const stat = interaction.options.getString('stat');
+  const amount = interaction.options.getInteger('amount');
+
+  const stats = readJson(STATS_FILE);
+
+  if (!stats[user.id]) {
+    stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
+  }
+
+  stats[user.id][stat] = Math.max(
+    0,
+    (stats[user.id][stat] || 0) - amount
+  );
+
+  writeJson(STATS_FILE, stats);
+
+  await updateScoreboard(interaction.guild, stats);
+  await updateKillLeaders(interaction.guild, stats);
+  await updateKillerOfChampionsRole(interaction.guild, stats);
+
+  await interaction.editReply(
+    `✅ Removed ${amount} ${stat} from ${user.username}.`
+  );
+
+  return;
+}
 if (interaction.commandName === 'record-kills') {
   await interaction.deferReply({ ephemeral: true });
 
