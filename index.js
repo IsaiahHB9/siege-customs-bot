@@ -6,6 +6,7 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const RESULTS_CHANNEL_ID = process.env.RESULTS_CHANNEL_ID;
 const SCOREBOARD_CHANNEL_ID = process.env.SCOREBOARD_CHANNEL_ID;
 const DRAFT_CHANNEL_ID = process.env.DRAFT_CHANNEL_ID;
+const KILL_LEADERS_CHANNEL_ID = process.env.KILL_LEADERS_CHANNEL_ID;
 
 const STATS_FILE = './stats.json';
 const DRAFT_FILE = './drafts.json';
@@ -49,14 +50,27 @@ function writeJson(file, data) {
 
 function buildScoreboard(stats) {
   const rows = Object.entries(stats)
-    .filter(([id, data]) => id !== 'scoreboardMessageId' && (data.wins > 0 || data.mvps > 0))
-    .sort((a, b) => b[1].wins - a[1].wins || b[1].mvps - a[1].mvps)
+    .filter(([id, data]) => id !== 'scoreboardMessageId' && id !== 'killLeadersMessageId' && (data.wins > 0 || data.mvps > 0))
+    .sort((a, b) => (b[1].wins ?? 0) - (a[1].wins ?? 0) || (b[1].mvps ?? 0) - (a[1].mvps ?? 0))
     .slice(0, 20);
 
   if (rows.length === 0) return 'No stats recorded yet.';
 
   return rows
-    .map(([id, data], index) => `**#${index + 1}** <@${id}> — 🏆 ${data.wins} wins | ⭐ ${data.mvps} MVPs`)
+    .map(([id, data], index) => `**#${index + 1}** <@${id}> — 🏆 ${data.wins ?? 0} wins | ⭐ ${data.mvps ?? 0} MVPs`)
+    .join('\n');
+}
+
+function buildKillLeaders(stats) {
+  const rows = Object.entries(stats)
+    .filter(([id, data]) => id !== 'scoreboardMessageId' && id !== 'killLeadersMessageId' && (data.kills ?? 0) > 0)
+    .sort((a, b) => (b[1].kills ?? 0) - (a[1].kills ?? 0))
+    .slice(0, 20);
+
+  if (rows.length === 0) return 'No kills recorded yet.';
+
+  return rows
+    .map(([id, data], index) => `**#${index + 1}** <@${id}> — 🔫 ${data.kills ?? 0} kills`)
     .join('\n');
 }
 
@@ -84,9 +98,56 @@ async function updateScoreboard(guild, stats) {
   writeJson(STATS_FILE, stats);
 }
 
+async function updateKillLeaders(guild, stats) {
+  const channel = guild.channels.cache.get(KILL_LEADERS_CHANNEL_ID);
+  if (!channel) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(0xF97316)
+    .setTitle('🔫 Kill Leaders')
+    .setDescription(buildKillLeaders(stats))
+    .setFooter({ text: 'Updates automatically after every declared match' })
+    .setTimestamp();
+
+  if (stats.killLeadersMessageId) {
+    const oldMessage = await channel.messages.fetch(stats.killLeadersMessageId).catch(() => null);
+    if (oldMessage) {
+      await oldMessage.edit({ embeds: [embed] });
+      return;
+    }
+  }
+
+  const newMessage = await channel.send({ embeds: [embed] });
+  stats.killLeadersMessageId = newMessage.id;
+  writeJson(STATS_FILE, stats);
+}
+
+async function updateKillerOfChampionsRole(guild, stats) {
+  const role = guild.roles.cache.find(r => r.name === 'Killer of Champions');
+  if (!role) return;
+
+  const entries = Object.entries(stats)
+    .filter(([id, data]) => id !== 'scoreboardMessageId' && id !== 'killLeadersMessageId' && (data.kills ?? 0) > 0)
+    .sort((a, b) => (b[1].kills ?? 0) - (a[1].kills ?? 0));
+
+  if (entries.length === 0) return;
+
+  const topId = entries[0][0];
+
+  await guild.members.fetch().catch(() => null);
+
+  const holders = guild.members.cache.filter(m => m.roles.cache.has(role.id));
+  for (const [, member] of holders) {
+    if (member.id !== topId) await member.roles.remove(role).catch(console.error);
+  }
+
+  const topMember = await guild.members.fetch(topId).catch(() => null);
+  if (topMember) await topMember.roles.add(role).catch(console.error);
+}
+
 async function updateStatRoles(member, stats) {
-  const winCount = stats[member.id].wins;
-  const mvpCount = stats[member.id].mvps;
+  const winCount = stats[member.id].wins ?? 0;
+  const mvpCount = stats[member.id].mvps ?? 0;
 
   for (const amount in WIN_ROLES) {
     if (winCount >= Number(amount)) {
@@ -154,31 +215,11 @@ function buildMapBanEmbed(mapban) {
     .setTitle(`🗺️ Map Bans — ${mapban.name}`)
     .setDescription('Each captain may ban up to **3 maps**.')
     .addFields(
-      {
-        name: `Team 1 Captain`,
-        value: `<@${mapban.team1.captain}>`,
-        inline: true,
-      },
-      {
-        name: `Team 2 Captain`,
-        value: `<@${mapban.team2.captain}>`,
-        inline: true,
-      },
-      {
-        name: `Team 1 Bans`,
-        value: mapban.team1.bans.length ? mapban.team1.bans.map(m => `• ${m}`).join('\n') : 'No bans yet',
-        inline: true,
-      },
-      {
-        name: `Team 2 Bans`,
-        value: mapban.team2.bans.length ? mapban.team2.bans.map(m => `• ${m}`).join('\n') : 'No bans yet',
-        inline: true,
-      },
-      {
-        name: `Available Maps`,
-        value: availableMaps.length ? availableMaps.map(m => `• ${m}`).join('\n') : 'No maps available',
-        inline: false,
-      }
+      { name: 'Team 1 Captain', value: `<@${mapban.team1.captain}>`, inline: true },
+      { name: 'Team 2 Captain', value: `<@${mapban.team2.captain}>`, inline: true },
+      { name: 'Team 1 Bans', value: mapban.team1.bans.length ? mapban.team1.bans.map(m => `• ${m}`).join('\n') : 'No bans yet', inline: true },
+      { name: 'Team 2 Bans', value: mapban.team2.bans.length ? mapban.team2.bans.map(m => `• ${m}`).join('\n') : 'No bans yet', inline: true },
+      { name: 'Available Maps', value: availableMaps.length ? availableMaps.map(m => `• ${m}`).join('\n') : 'No maps available', inline: false }
     )
     .setFooter({ text: 'Updates automatically as maps are banned' })
     .setTimestamp();
@@ -223,10 +264,15 @@ const commands = [
       ))
     .addUserOption(o => o.setName('mvp').setDescription('MVP of the match').setRequired(true))
     .addUserOption(o => o.setName('winner1').setDescription('Winner #1').setRequired(true))
+    .addIntegerOption(o => o.setName('kills1').setDescription('Kills for Winner #1').setRequired(true).setMinValue(0))
     .addUserOption(o => o.setName('winner2').setDescription('Winner #2'))
+    .addIntegerOption(o => o.setName('kills2').setDescription('Kills for Winner #2').setMinValue(0))
     .addUserOption(o => o.setName('winner3').setDescription('Winner #3'))
+    .addIntegerOption(o => o.setName('kills3').setDescription('Kills for Winner #3').setMinValue(0))
     .addUserOption(o => o.setName('winner4').setDescription('Winner #4'))
+    .addIntegerOption(o => o.setName('kills4').setDescription('Kills for Winner #4').setMinValue(0))
     .addUserOption(o => o.setName('winner5').setDescription('Winner #5'))
+    .addIntegerOption(o => o.setName('kills5').setDescription('Kills for Winner #5').setMinValue(0))
     .addRoleOption(o => o.setName('champion_role').setDescription('Tournament champion role'))
     .addIntegerOption(o => o.setName('currency').setDescription('Noctaly coins to award each winner').setMinValue(0))
     .addStringOption(o => o.setName('notes').setDescription('Optional match notes')),
@@ -320,14 +366,8 @@ client.on('interactionCreate', async interaction => {
     const mapban = {
       name,
       messageId: null,
-      team1: {
-        captain: team1Captain.id,
-        bans: [],
-      },
-      team2: {
-        captain: team2Captain.id,
-        bans: [],
-      },
+      team1: { captain: team1Captain.id, bans: [] },
+      team2: { captain: team2Captain.id, bans: [] },
     };
 
     const messageId = await updateMapBanMessage(interaction.guild, mapban);
@@ -506,15 +546,34 @@ client.on('interactionCreate', async interaction => {
     const isTournament = format.includes('tournament');
     const trophyRole = interaction.guild.roles.cache.find(r => r.name === 'Draft Winner');
 
-    const winnerUsers = [1, 2, 3, 4, 5]
-      .map(n => interaction.options.getUser(`winner${n}`))
+    const winnerEntries = [1, 2, 3, 4, 5]
+      .map(n => {
+        const user = interaction.options.getUser(`winner${n}`);
+        const kills = interaction.options.getInteger(`kills${n}`);
+        if (!user) return null;
+        return { user, kills, number: n };
+      })
       .filter(Boolean);
+
+    for (const entry of winnerEntries) {
+      if (entry.kills === null) {
+        await interaction.editReply(`❌ You must enter kills for Winner #${entry.number} (${entry.user.username}).`);
+        return;
+      }
+    }
 
     const stats = readJson(STATS_FILE);
 
-    for (const u of winnerUsers) {
-      if (!stats[u.id]) stats[u.id] = { wins: 0, mvps: 0 };
+    for (const entry of winnerEntries) {
+      const u = entry.user;
+
+      if (!stats[u.id]) stats[u.id] = { wins: 0, mvps: 0, kills: 0 };
+      if (stats[u.id].wins === undefined) stats[u.id].wins = 0;
+      if (stats[u.id].mvps === undefined) stats[u.id].mvps = 0;
+      if (stats[u.id].kills === undefined) stats[u.id].kills = 0;
+
       stats[u.id].wins += 1;
+      stats[u.id].kills += entry.kills;
 
       const member = await interaction.guild.members.fetch(u.id).catch(() => null);
 
@@ -524,7 +583,11 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    if (!stats[mvpUser.id]) stats[mvpUser.id] = { wins: 0, mvps: 0 };
+    if (!stats[mvpUser.id]) stats[mvpUser.id] = { wins: 0, mvps: 0, kills: 0 };
+    if (stats[mvpUser.id].wins === undefined) stats[mvpUser.id].wins = 0;
+    if (stats[mvpUser.id].mvps === undefined) stats[mvpUser.id].mvps = 0;
+    if (stats[mvpUser.id].kills === undefined) stats[mvpUser.id].kills = 0;
+
     stats[mvpUser.id].mvps += 1;
 
     const mvpMember = await interaction.guild.members.fetch(mvpUser.id).catch(() => null);
@@ -532,6 +595,8 @@ client.on('interactionCreate', async interaction => {
 
     writeJson(STATS_FILE, stats);
     await updateScoreboard(interaction.guild, stats);
+    await updateKillLeaders(interaction.guild, stats);
+    await updateKillerOfChampionsRole(interaction.guild, stats);
 
     if (championRole && isTournament) {
       const membersWithRole = interaction.guild.members.cache.filter(m => m.roles.cache.has(championRole.id));
@@ -540,23 +605,25 @@ client.on('interactionCreate', async interaction => {
         await m.roles.remove(championRole).catch(console.error);
       }
 
-      for (const u of winnerUsers) {
-        const member = await interaction.guild.members.fetch(u.id).catch(() => null);
+      for (const entry of winnerEntries) {
+        const member = await interaction.guild.members.fetch(entry.user.id).catch(() => null);
         if (member) await member.roles.add(championRole).catch(console.error);
       }
     }
 
-    const noctalyCmds = winnerUsers.map(u => `/eco add ${u.id} ${currency}`);
+    const noctalyCmds = winnerEntries.map(entry => `/eco add ${entry.user.id} ${currency}`);
     const resultsChannel = interaction.guild.channels.cache.get(RESULTS_CHANNEL_ID);
+    const killLines = winnerEntries.map(entry => `<@${entry.user.id}> — 🔫 ${entry.kills} kills`).join('\n');
 
     if (resultsChannel) {
       const embed = new EmbedBuilder()
         .setColor(0xF97316)
-        .setTitle(`🏆 ${gameTypeName} — Winner${winnerUsers.length > 1 ? 's' : ''} Declared!`)
-        .setDescription(winnerUsers.map(u => `<@${u.id}>`).join(' · '))
+        .setTitle(`🏆 ${gameTypeName} — Winner${winnerEntries.length > 1 ? 's' : ''} Declared!`)
+        .setDescription(winnerEntries.map(entry => `<@${entry.user.id}>`).join(' · '))
         .addFields(
           [
             { name: '⭐ MVP', value: `<@${mvpUser.id}>`, inline: true },
+            { name: '🔫 Kills', value: killLines || 'No kills entered', inline: false },
             { name: '💰 Currency Reward', value: `${currency} coins each`, inline: true },
             { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
             trophyRole ? { name: '🛡️ Draft Winner Role', value: trophyRole.toString(), inline: true } : null,
@@ -573,7 +640,9 @@ client.on('interactionCreate', async interaction => {
     const replyLines = [
       `✅ **Match recorded!** Winners declared for **${gameTypeName}**`,
       `⭐ MVP: ${mvpUser.username}`,
+      `🔫 **Kills:**\n${killLines}`,
       trophyRole ? `🛡️ **Draft Winner** role assigned to all winners` : `⚠️ Draft Winner role was not found`,
+      `🔫 Kill Leaders updated`,
       championRole && isTournament ? `👑 Champion role **${championRole.name}** assigned to tournament winners` : '',
       championRole && !isTournament ? `ℹ️ Champion role ignored because this was not a tournament` : '',
       currency > 0 ? `\n**Paste these Noctaly commands to award coins:**` : '',
