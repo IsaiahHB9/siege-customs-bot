@@ -275,19 +275,8 @@ const commands = [
     .addIntegerOption(o => o.setName('kills5').setDescription('Kills for Winner #5').setMinValue(0))
     .addRoleOption(o => o.setName('champion_role').setDescription('Tournament champion role'))
 .addIntegerOption(o => o.setName('currency').setDescription('Noctaly coins to award each winner').setMinValue(0))
-.addStringOption(o => o.setName('notes').setDescription('Optional match notes'))
+.addStringOption(o => o.setName('notes').setDescription('Optional match notes')),
 
-.addUserOption(o => o.setName('player6').setDescription('Player #6'))
-    .addIntegerOption(o => o.setName('kills6').setDescription('Kills for Player #6').setMinValue(0))
-
-    .addUserOption(o => o.setName('player7').setDescription('Player #7'))
-    .addIntegerOption(o => o.setName('kills7').setDescription('Kills for Player #7').setMinValue(0))
-
-    .addUserOption(o => o.setName('player8').setDescription('Player #8'))
-    .addIntegerOption(o => o.setName('kills8').setDescription('Kills for Player #8').setMinValue(0))
-
-    .addUserOption(o => o.setName('player9').setDescription('Player #9'))
-    .addIntegerOption(o => o.setName('kills9').setDescription('Kills for Player #9').setMinValue(0)),
 
 
   new SlashCommandBuilder()
@@ -348,6 +337,25 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('leaderboard')
+    new SlashCommandBuilder()
+  .setName('record-kills')
+  .setDescription('Record kills for players')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+
+  .addUserOption(o => o.setName('player1').setDescription('Player').setRequired(true))
+  .addIntegerOption(o => o.setName('kills1').setDescription('Kills').setRequired(true))
+
+  .addUserOption(o => o.setName('player2').setDescription('Player'))
+  .addIntegerOption(o => o.setName('kills2').setDescription('Kills'))
+
+  .addUserOption(o => o.setName('player3').setDescription('Player'))
+  .addIntegerOption(o => o.setName('kills3').setDescription('Kills'))
+
+  .addUserOption(o => o.setName('player4').setDescription('Player'))
+  .addIntegerOption(o => o.setName('kills4').setDescription('Kills'))
+
+  .addUserOption(o => o.setName('player5').setDescription('Player'))
+  .addIntegerOption(o => o.setName('kills5').setDescription('Kills'));
     .setDescription('Show the top players leaderboard'),
 ].map(c => c.toJSON());
 
@@ -568,16 +576,7 @@ client.on('interactionCreate', async interaction => {
   })
   .filter(Boolean);
 
-const otherEntries = [6, 7, 8, 9, 10]
-  .map(n => {
-    const user = interaction.options.getUser(`player${n}`);
-    const kills = interaction.options.getInteger(`kills${n}`);
-    if (!user) return null;
-    return { user, kills, winner: false };
-  })
-  .filter(Boolean);
-
-const allEntries = [...winnerEntries, ...otherEntries];
+const allEntries = [...winnerEntries];
 
     for (const entry of winnerEntries) {
       if (entry.kills === null) {
@@ -678,7 +677,32 @@ const allEntries = [...winnerEntries, ...otherEntries];
     await interaction.editReply({ content: replyLines });
     return;
   }
+if (interaction.commandName === 'record-kills') {
+  await interaction.deferReply({ ephemeral: true });
 
+  const stats = readJson(STATS_FILE);
+
+  for (let i = 1; i <= 5; i++) {
+    const user = interaction.options.getUser(`player${i}`);
+    const kills = interaction.options.getInteger(`kills${i}`);
+
+    if (!user || kills === null) continue;
+
+    if (!stats[user.id]) {
+      stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
+    }
+
+    stats[user.id].kills += kills;
+  }
+
+  writeJson(STATS_FILE, stats);
+
+  await updateKillLeaders(interaction.guild, stats);
+  await updateKillerOfChampionsRole(interaction.guild, stats);
+
+  await interaction.editReply('✅ Kills recorded.');
+  return;
+}
   if (interaction.commandName === 'leaderboard') {
     await interaction.reply({ content: '📊 View the full leaderboard at your dashboard!', ephemeral: true });
   }
