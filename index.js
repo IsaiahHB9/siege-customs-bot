@@ -287,10 +287,8 @@ const commands = [
     .addIntegerOption(o => o.setName('kills8').setDescription('Kills for Player #8').setMinValue(0))
 
     .addUserOption(o => o.setName('player9').setDescription('Player #9'))
-    .addIntegerOption(o => o.setName('kills9').setDescription('Kills for Player #9').setMinValue(0))
+    .addIntegerOption(o => o.setName('kills9').setDescription('Kills for Player #9').setMinValue(0)),
 
-    .addUserOption(o => o.setName('player10').setDescription('Player #10'))
-    .addIntegerOption(o => o.setName('kills10').setDescription('Kills for Player #10').setMinValue(0)),
 
   new SlashCommandBuilder()
     .setName('draft-create')
