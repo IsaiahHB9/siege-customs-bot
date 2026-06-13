@@ -9,6 +9,20 @@ const DRAFT_CHANNEL_ID = process.env.DRAFT_CHANNEL_ID;
 
 const STATS_FILE = './stats.json';
 const DRAFT_FILE = './drafts.json';
+const MAPBAN_FILE = './mapbans.json';
+
+const MAP_POOL = [
+  'Oregon',
+  'Consulate',
+  'Chalet',
+  'Bank',
+  'Clubhouse',
+  'Kafe Dostoyevsky',
+  'Lair',
+  'Skyscraper',
+  'Nighthaven Labs',
+  'Border',
+];
 
 const WIN_ROLES = {
   5: '5x Draft Winner',
@@ -131,6 +145,63 @@ async function updateDraftMessage(guild, draft) {
   return newMessage.id;
 }
 
+function buildMapBanEmbed(mapban) {
+  const bannedMaps = [...mapban.team1.bans, ...mapban.team2.bans];
+  const availableMaps = MAP_POOL.filter(map => !bannedMaps.includes(map));
+
+  return new EmbedBuilder()
+    .setColor(0xF97316)
+    .setTitle(`🗺️ Map Bans — ${mapban.name}`)
+    .setDescription('Each captain may ban up to **3 maps**.')
+    .addFields(
+      {
+        name: `Team 1 Captain`,
+        value: `<@${mapban.team1.captain}>`,
+        inline: true,
+      },
+      {
+        name: `Team 2 Captain`,
+        value: `<@${mapban.team2.captain}>`,
+        inline: true,
+      },
+      {
+        name: `Team 1 Bans`,
+        value: mapban.team1.bans.length ? mapban.team1.bans.map(m => `• ${m}`).join('\n') : 'No bans yet',
+        inline: true,
+      },
+      {
+        name: `Team 2 Bans`,
+        value: mapban.team2.bans.length ? mapban.team2.bans.map(m => `• ${m}`).join('\n') : 'No bans yet',
+        inline: true,
+      },
+      {
+        name: `Available Maps`,
+        value: availableMaps.length ? availableMaps.map(m => `• ${m}`).join('\n') : 'No maps available',
+        inline: false,
+      }
+    )
+    .setFooter({ text: 'Updates automatically as maps are banned' })
+    .setTimestamp();
+}
+
+async function updateMapBanMessage(guild, mapban) {
+  const channel = guild.channels.cache.get(DRAFT_CHANNEL_ID);
+  if (!channel) return null;
+
+  const embed = buildMapBanEmbed(mapban);
+
+  if (mapban.messageId) {
+    const oldMessage = await channel.messages.fetch(mapban.messageId).catch(() => null);
+    if (oldMessage) {
+      await oldMessage.edit({ embeds: [embed] });
+      return oldMessage.id;
+    }
+  }
+
+  const newMessage = await channel.send({ embeds: [embed] });
+  return newMessage.id;
+}
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
@@ -195,6 +266,28 @@ const commands = [
     .setDescription('Show the current draft teams'),
 
   new SlashCommandBuilder()
+    .setName('mapban-create')
+    .setDescription('Create a map ban board')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addStringOption(o => o.setName('name').setDescription('Match or tournament name').setRequired(true))
+    .addUserOption(o => o.setName('team1_captain').setDescription('Team 1 captain').setRequired(true))
+    .addUserOption(o => o.setName('team2_captain').setDescription('Team 2 captain').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('mapban-ban')
+    .setDescription('Ban a map for a team')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addIntegerOption(o => o.setName('team').setDescription('Team banning the map').setRequired(true).setMinValue(1).setMaxValue(2))
+    .addStringOption(o => o.setName('map').setDescription('Map to ban').setRequired(true)
+      .addChoices(
+        ...MAP_POOL.map(map => ({ name: map, value: map }))
+      )),
+
+  new SlashCommandBuilder()
+    .setName('mapban-show')
+    .setDescription('Show the current map ban board'),
+
+  new SlashCommandBuilder()
     .setName('leaderboard')
     .setDescription('Show the top players leaderboard'),
 ].map(c => c.toJSON());
@@ -214,6 +307,91 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'mapban-create') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const name = interaction.options.getString('name');
+    const team1Captain = interaction.options.getUser('team1_captain');
+    const team2Captain = interaction.options.getUser('team2_captain');
+
+    const mapbans = readJson(MAPBAN_FILE);
+
+    const mapban = {
+      name,
+      messageId: null,
+      team1: {
+        captain: team1Captain.id,
+        bans: [],
+      },
+      team2: {
+        captain: team2Captain.id,
+        bans: [],
+      },
+    };
+
+    const messageId = await updateMapBanMessage(interaction.guild, mapban);
+    mapban.messageId = messageId;
+
+    mapbans[interaction.guild.id] = mapban;
+    writeJson(MAPBAN_FILE, mapbans);
+
+    await interaction.editReply('✅ Map ban board created.');
+    return;
+  }
+
+  if (interaction.commandName === 'mapban-ban') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const teamNumber = interaction.options.getInteger('team');
+    const map = interaction.options.getString('map');
+
+    const mapbans = readJson(MAPBAN_FILE);
+    const mapban = mapbans[interaction.guild.id];
+
+    if (!mapban) {
+      await interaction.editReply('❌ No active map ban board found. Use `/mapban-create` first.');
+      return;
+    }
+
+    const allBans = [...mapban.team1.bans, ...mapban.team2.bans];
+
+    if (allBans.includes(map)) {
+      await interaction.editReply('❌ That map has already been banned.');
+      return;
+    }
+
+    const teamKey = teamNumber === 1 ? 'team1' : 'team2';
+
+    if (mapban[teamKey].bans.length >= 3) {
+      await interaction.editReply(`❌ Team ${teamNumber} already has 3 bans.`);
+      return;
+    }
+
+    mapban[teamKey].bans.push(map);
+
+    const messageId = await updateMapBanMessage(interaction.guild, mapban);
+    mapban.messageId = messageId;
+
+    mapbans[interaction.guild.id] = mapban;
+    writeJson(MAPBAN_FILE, mapbans);
+
+    await interaction.editReply(`✅ Team ${teamNumber} banned **${map}**.`);
+    return;
+  }
+
+  if (interaction.commandName === 'mapban-show') {
+    const mapbans = readJson(MAPBAN_FILE);
+    const mapban = mapbans[interaction.guild.id];
+
+    if (!mapban) {
+      await interaction.reply({ content: '❌ No active map ban board found.', ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({ embeds: [buildMapBanEmbed(mapban)] });
+    return;
+  }
 
   if (interaction.commandName === 'draft-create') {
     await interaction.deferReply({ ephemeral: true });
