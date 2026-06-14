@@ -1708,6 +1708,255 @@ client.on('interactionCreate', async interaction => {
 
     Paste your current interaction handlers here.
   */
+   if (interaction.commandName === 'remove-stats') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const user = interaction.options.getUser('user');
+    const stat = interaction.options.getString('stat');
+    const amount = interaction.options.getInteger('amount');
+
+    const stats = readJson(STATS_FILE);
+
+    if (!stats[user.id]) stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
+    if (stats[user.id][stat] === undefined) stats[user.id][stat] = 0;
+
+    stats[user.id][stat] = Math.max(0, stats[user.id][stat] - amount);
+
+    writeJson(STATS_FILE, stats);
+
+    await updateScoreboard(interaction.guild, stats);
+    await updateKillLeaders(interaction.guild, stats);
+    await updateKillerOfChampionsRole(interaction.guild, stats);
+
+    await interaction.editReply(`✅ Removed **${amount} ${stat}** from **${user.username}**.`);
+    return;
+  }
+
+  if (interaction.commandName === 'record-kills') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const stats = readJson(STATS_FILE);
+
+    for (let i = 1; i <= 10; i++) {
+      const user = interaction.options.getUser(`player${i}`);
+      const kills = interaction.options.getInteger(`kills${i}`);
+
+      if (!user || kills === null) continue;
+
+      if (!stats[user.id]) stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
+      if (stats[user.id].kills === undefined) stats[user.id].kills = 0;
+
+      stats[user.id].kills += kills;
+
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (member) await updateSingleGameKillRoles(member, kills);
+    }
+
+    writeJson(STATS_FILE, stats);
+
+    await updateKillLeaders(interaction.guild, stats);
+    await updateKillerOfChampionsRole(interaction.guild, stats);
+
+    await interaction.editReply('✅ Kills recorded.');
+    return;
+  }
+
+  if (interaction.commandName === 'leaderboard') {
+    const stats = readJson(STATS_FILE);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xF97316)
+      .setTitle('📊 Matchpoint Leaderboard')
+      .addFields(
+        { name: '🏆 Draft Scoreboard', value: buildScoreboard(stats), inline: false },
+        { name: '🔫 Kill Leaders', value: buildKillLeaders(stats), inline: false }
+      )
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
+    return;
+  }
+
+  if (interaction.commandName === 'draft-create') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const name = interaction.options.getString('name');
+    const format = interaction.options.getString('format');
+    const teamCount = interaction.options.getInteger('teams');
+    const maxPlayers = Number(format[0]);
+
+    const captainUsers = [];
+
+    for (let i = 1; i <= 8; i++) {
+      const captain = interaction.options.getUser(`captain${i}`);
+      if (captain) captainUsers.push(captain);
+    }
+
+    if (captainUsers.length < teamCount) {
+      await interaction.editReply(`❌ You selected ${teamCount} teams but only gave ${captainUsers.length} captains.`);
+      return;
+    }
+
+    const draft = {
+      name,
+      format,
+      teamCount,
+      maxPlayers,
+      messageId: null,
+      teams: captainUsers.slice(0, teamCount).map((captain, index) => ({
+        number: index + 1,
+        players: [captain.id],
+      })),
+    };
+
+    const drafts = readJson(DRAFT_FILE);
+    drafts[interaction.guild.id] = draft;
+
+    const messageId = await updateDraftMessage(interaction.guild, draft);
+    drafts[interaction.guild.id].messageId = messageId;
+
+    writeJson(DRAFT_FILE, drafts);
+
+    await interaction.editReply(`✅ Draft created and posted with ${teamCount} teams.`);
+    return;
+  }
+
+  if (interaction.commandName === 'draft-pick') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const teamNumber = interaction.options.getInteger('team');
+    const player = interaction.options.getUser('player');
+
+    const drafts = readJson(DRAFT_FILE);
+    const draft = drafts[interaction.guild.id];
+
+    if (!draft) {
+      await interaction.editReply('❌ No active draft found. Use `/draft-create` first.');
+      return;
+    }
+
+    const team = draft.teams.find(t => t.number === teamNumber);
+
+    if (!team) {
+      await interaction.editReply('❌ That team does not exist in this draft.');
+      return;
+    }
+
+    const alreadyPicked = draft.teams.some(t => t.players.includes(player.id));
+
+    if (alreadyPicked) {
+      await interaction.editReply('❌ That player is already on a team.');
+      return;
+    }
+
+    if (team.players.length >= draft.maxPlayers) {
+      await interaction.editReply(`❌ Team ${teamNumber} is already full.`);
+      return;
+    }
+
+    team.players.push(player.id);
+
+    const messageId = await updateDraftMessage(interaction.guild, draft);
+    draft.messageId = messageId;
+
+    drafts[interaction.guild.id] = draft;
+    writeJson(DRAFT_FILE, drafts);
+
+    await interaction.editReply(`✅ Added ${player.username} to Team ${teamNumber}.`);
+    return;
+  }
+
+  if (interaction.commandName === 'draft-show') {
+    const drafts = readJson(DRAFT_FILE);
+    const draft = drafts[interaction.guild.id];
+
+    if (!draft) {
+      await interaction.reply({ content: '❌ No active draft found.', ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({ embeds: [buildDraftEmbed(draft)] });
+    return;
+  }
+
+  if (interaction.commandName === 'mapban-create') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const name = interaction.options.getString('name');
+    const team1Captain = interaction.options.getUser('team1_captain');
+    const team2Captain = interaction.options.getUser('team2_captain');
+
+    const mapbans = readJson(MAPBAN_FILE);
+
+    const mapban = {
+      name,
+      messageId: null,
+      team1: { captain: team1Captain.id, bans: [] },
+      team2: { captain: team2Captain.id, bans: [] },
+    };
+
+    const messageId = await updateMapBanMessage(interaction.guild, mapban);
+    mapban.messageId = messageId;
+
+    mapbans[interaction.guild.id] = mapban;
+    writeJson(MAPBAN_FILE, mapbans);
+
+    await interaction.editReply('✅ Map ban board created.');
+    return;
+  }
+
+  if (interaction.commandName === 'mapban-ban') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const teamNumber = interaction.options.getInteger('team');
+    const map = interaction.options.getString('map');
+
+    const mapbans = readJson(MAPBAN_FILE);
+    const mapban = mapbans[interaction.guild.id];
+
+    if (!mapban) {
+      await interaction.editReply('❌ No active map ban board found. Use `/mapban-create` first.');
+      return;
+    }
+
+    const allBans = [...mapban.team1.bans, ...mapban.team2.bans];
+
+    if (allBans.includes(map)) {
+      await interaction.editReply('❌ That map has already been banned.');
+      return;
+    }
+
+    const teamKey = teamNumber === 1 ? 'team1' : 'team2';
+
+    if (mapban[teamKey].bans.length >= 3) {
+      await interaction.editReply(`❌ Team ${teamNumber} already has 3 bans.`);
+      return;
+    }
+
+    mapban[teamKey].bans.push(map);
+
+    const messageId = await updateMapBanMessage(interaction.guild, mapban);
+    mapban.messageId = messageId;
+
+    mapbans[interaction.guild.id] = mapban;
+    writeJson(MAPBAN_FILE, mapbans);
+
+    await interaction.editReply(`✅ Team ${teamNumber} banned **${map}**.`);
+    return;
+  }
+
+  if (interaction.commandName === 'mapban-show') {
+    const mapbans = readJson(MAPBAN_FILE);
+    const mapban = mapbans[interaction.guild.id];
+
+    if (!mapban) {
+      await interaction.reply({ content: '❌ No active map ban board found.', ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({ embeds: [buildMapBanEmbed(mapban)] });
+    return;
+  }
    if (interaction.commandName === 'declare-winner') {
     await interaction.deferReply({ ephemeral: true });
 
