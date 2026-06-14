@@ -1566,6 +1566,49 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ embeds: [embed] });
     return;
   }
+  if (interaction.commandName === 'redeem') {
+  const itemId = interaction.options.getString('item_id');
+  const item = SHOP_ITEMS[itemId];
+
+  if (!item) {
+    await interaction.reply('❌ Item not found.');
+    return;
+  }
+
+  if (item.type !== 'coin') {
+    await interaction.reply('❌ Only coin items can be redeemed.');
+    return;
+  }
+
+  const inventory = getInventory();
+  const economy = getEconomy();
+
+  ensureUserInventory(inventory, interaction.user.id);
+  ensureUserEconomy(economy, interaction.user.id);
+
+  const success = removeItem(
+    inventory,
+    interaction.user.id,
+    itemId,
+    1
+  );
+
+  if (!success) {
+    await interaction.reply(`❌ You do not own **${item.name}**.`);
+    return;
+  }
+
+  economy[interaction.user.id].balance += item.coinValue;
+
+  saveInventory(inventory);
+  saveEconomy(economy);
+
+  await interaction.reply(
+    `💰 Redeemed **${item.name}** for **${formatCoins(item.coinValue)}**.`
+  );
+
+  return;
+}
     if (interaction.commandName === 'add-money') {
     const target = interaction.options.getUser('user');
     const amount = interaction.options.getInteger('amount');
