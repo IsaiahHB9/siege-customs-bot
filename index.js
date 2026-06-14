@@ -55,9 +55,21 @@ const RARITY = {
   Rare: { color: 0x22C55E, emoji: '🟢' },
   Epic: { color: 0xA855F7, emoji: '🟣' },
   Mythic: { color: 0xEF4444, emoji: '🔴' },
-  Celestial: { color: 0x2DD4BF, emoji: '🩵' },
-  Contraband: { color: 0xB45309, emoji: '🔥' },
-  Unobtainable: { color: 0xFF00FF, emoji: '🌈' },
+
+  Celestial: {
+    color: 0x2DD4BF,
+    emoji: '<:celestial:1515670072834785330>'
+  },
+
+  Contraband: {
+    color: 0xB45309,
+    emoji: '<:contraband:1515670136793731134>'
+  },
+
+  Unobtainable: {
+    color: 0xFF00FF,
+    emoji: '<:unobtainable:1515670220142809119>'
+  },
 };
 
 const CHESTS = {
@@ -752,19 +764,19 @@ function buildRewardsEmbed() {
     {
       name: '🎮 Draft Rewards',
       value:
-        '1v1 Win — 75\n' +
-        '2v2 Win — 125\n' +
-        '3v3 Win — 175\n' +
-        '5v5 Win — 250\n' +
-        'MVP Bonus — 50-100',
+        '1v1 Win — 500\n' +
+        '2v2 Win — 750\n' +
+        '3v3 Win — 1000\n' +
+        '5v5 Win — 2000\n' +
+        'MVP Bonus — 500-1000',
       inline: false
     },
     {
       name: '👑 Tournament Rewards',
       value:
-        'Small Tournament — 1,500\n' +
-        '8 Team Tournament — 3,000\n' +
-        '16 Team Tournament — 5,000',
+        'Small Tournament — 5000\n' +
+        '8 Team Tournament — 15,000\n' +
+        '16 Team Tournament — 30,000',
       inline: false
     }
   );
