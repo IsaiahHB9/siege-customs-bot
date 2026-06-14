@@ -8,11 +8,16 @@ const SCOREBOARD_CHANNEL_ID = process.env.SCOREBOARD_CHANNEL_ID;
 const DRAFT_CHANNEL_ID = process.env.DRAFT_CHANNEL_ID;
 const KILL_LEADERS_CHANNEL_ID = process.env.KILL_LEADERS_CHANNEL_ID;
 
-const STATS_FILE = './stats.json';
-const DRAFT_FILE = './drafts.json';
-const MAPBAN_FILE = './mapbans.json';
-const ECONOMY_FILE = './economy.json';
-const INVENTORY_FILE = './inventory.json';
+const DATA_DIR = '/data';
+
+const STATS_FILE = `${DATA_DIR}/stats.json`;
+const DRAFT_FILE = `${DATA_DIR}/drafts.json`;
+const MAPBAN_FILE = `${DATA_DIR}/mapbans.json`;
+const ECONOMY_FILE = `${DATA_DIR}/economy.json`;
+const INVENTORY_FILE = `${DATA_DIR}/inventory.json`;
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 const CURRENCY_NAME = 'MatchCoins';
 
