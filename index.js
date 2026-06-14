@@ -1708,6 +1708,117 @@ client.on('interactionCreate', async interaction => {
 
     Paste your current interaction handlers here.
   */
+   if (interaction.commandName === 'declare-winner') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const hostName = interaction.options.getString('host');
+    const format = interaction.options.getString('format');
+    const matchName = `${hostName}'s ${format.replace(/_/g, ' ').toUpperCase()}`;
+    const currency = interaction.options.getInteger('currency') ?? 0;
+    const notes = interaction.options.getString('notes') ?? '';
+    const championRole = interaction.options.getRole('champion_role');
+    const mvpUser = interaction.options.getUser('mvp');
+    const isTournament = format.includes('tournament');
+    const trophyRole = interaction.guild.roles.cache.find(r => r.name === 'Draft Winner');
+
+    const winnerEntries = [1, 2, 3, 4, 5]
+      .map(n => {
+        const user = interaction.options.getUser(`winner${n}`);
+        if (!user) return null;
+        return { user };
+      })
+      .filter(Boolean);
+
+    const stats = readJson(STATS_FILE);
+    const economy = getEconomy();
+
+    for (const entry of winnerEntries) {
+      const user = entry.user;
+
+      if (!stats[user.id]) stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
+      if (stats[user.id].wins === undefined) stats[user.id].wins = 0;
+      if (stats[user.id].mvps === undefined) stats[user.id].mvps = 0;
+      if (stats[user.id].kills === undefined) stats[user.id].kills = 0;
+
+      stats[user.id].wins += 1;
+
+      ensureUserEconomy(economy, user.id);
+      economy[user.id].balance += currency;
+
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+
+      if (member) {
+        if (trophyRole) await member.roles.add(trophyRole).catch(console.error);
+        await updateStatRoles(member, stats);
+      }
+    }
+
+    if (!stats[mvpUser.id]) stats[mvpUser.id] = { wins: 0, mvps: 0, kills: 0 };
+    if (stats[mvpUser.id].wins === undefined) stats[mvpUser.id].wins = 0;
+    if (stats[mvpUser.id].mvps === undefined) stats[mvpUser.id].mvps = 0;
+    if (stats[mvpUser.id].kills === undefined) stats[mvpUser.id].kills = 0;
+
+    stats[mvpUser.id].mvps += 1;
+
+    const mvpMember = await interaction.guild.members.fetch(mvpUser.id).catch(() => null);
+    if (mvpMember) await updateStatRoles(mvpMember, stats);
+
+    writeJson(STATS_FILE, stats);
+    saveEconomy(economy);
+
+    await updateScoreboard(interaction.guild, stats);
+    await updateKillLeaders(interaction.guild, stats);
+    await updateKillerOfChampionsRole(interaction.guild, stats);
+
+    if (championRole && isTournament) {
+      await interaction.guild.members.fetch().catch(() => null);
+
+      const membersWithRole = interaction.guild.members.cache.filter(m =>
+        m.roles.cache.has(championRole.id)
+      );
+
+      for (const [, member] of membersWithRole) {
+        await member.roles.remove(championRole).catch(console.error);
+      }
+
+      for (const entry of winnerEntries) {
+        const member = await interaction.guild.members.fetch(entry.user.id).catch(() => null);
+        if (member) await member.roles.add(championRole).catch(console.error);
+      }
+    }
+
+    const resultsChannel = interaction.guild.channels.cache.get(RESULTS_CHANNEL_ID);
+
+    if (resultsChannel) {
+      const embed = new EmbedBuilder()
+        .setColor(0xF97316)
+        .setTitle(`🏆 ${matchName} — Winner${winnerEntries.length > 1 ? 's' : ''} Declared!`)
+        .setDescription(winnerEntries.map(entry => `<@${entry.user.id}>`).join(' · '))
+        .addFields(
+          [
+            { name: '⭐ MVP', value: `<@${mvpUser.id}>`, inline: true },
+            { name: '💰 MatchCoins Awarded', value: `${formatCoins(currency)} each`, inline: true },
+            { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
+            trophyRole ? { name: '🛡️ Draft Winner Role', value: trophyRole.toString(), inline: true } : null,
+            championRole && isTournament ? { name: '👑 Champion Role', value: championRole.toString(), inline: true } : null,
+            notes ? { name: '📝 Notes', value: notes } : null,
+          ].filter(Boolean)
+        )
+        .setFooter({ text: `Declared by ${interaction.user.username}` })
+        .setTimestamp();
+
+      await resultsChannel.send({ embeds: [embed] });
+    }
+
+    await interaction.editReply(
+      `✅ **Match recorded!**\n` +
+      `🏆 Match: **${matchName}**\n` +
+      `⭐ MVP: **${mvpUser.username}**\n` +
+      `💰 Winners received **${formatCoins(currency)}** each.`
+    );
+
+    return;
+  }
 });
 
 process.on('unhandledRejection', error => {
