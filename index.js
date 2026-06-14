@@ -1284,6 +1284,15 @@ const commands = [
     .setDescription('Open a crate from your inventory')
     .addStringOption(o => o.setName('crate_id').setDescription('Crate ID').setRequired(true)),
 
+    new SlashCommandBuilder()
+  .setName('redeem')
+  .setDescription('Redeem a coin item for MatchCoins')
+  .addStringOption(o =>
+    o.setName('item_id')
+      .setDescription('Coin item to redeem')
+      .setRequired(true)
+  ),
+
   new SlashCommandBuilder()
     .setName('add-money')
     .setDescription('Add MatchCoins to a user')
