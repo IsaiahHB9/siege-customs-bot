@@ -577,6 +577,17 @@ function getBuyableItems() {
   return Object.values(SHOP_ITEMS).filter(item => item.buyable);
 }
 
+function getRedeemableItems(inventory, userId) {
+  ensureUserInventory(inventory, userId);
+
+  return Object.entries(inventory[userId])
+    .map(([id, amount]) => ({
+      item: SHOP_ITEMS[id],
+      amount
+    }))
+    .filter(entry => entry.item && entry.item.type === 'coin' && entry.amount > 0);
+}
+
 function getChestDropItems(rarity) {
   return Object.values(SHOP_ITEMS).filter(item => item.rarity === rarity && item.chestOnly);
 }
@@ -711,8 +722,7 @@ function buildHelpEmbed() {
       { name: '📋 Draft Commands', value: '`/draft-create`\n`/draft-pick`\n`/draft-show`', inline: false },
       { name: '🗺️ Map Ban Commands', value: '`/mapban-create`\n`/mapban-ban`\n`/mapban-show`', inline: false },
       { name: '🏆 Match & Stats Commands', value: '`/declare-winner`\n`/record-kills`\n`/remove-stats`\n`/leaderboard`', inline: false },
-      { name: '🛒 Shop Commands', value: '`/shop`\n`/show-shop`\n`/buy`\n`/inventory`\n`/redeem`\n`/gift`\n`/daily`\n`/balance`\n`/profile`\n`/rewards`', inline: false },
-      { name: '⚙️ Staff Economy Commands', value: '`/add-money`\n`/remove-money`\n`/set-money`\n`/give-item`\n`/remove-item`', inline: false }
+{ name: '🛒 Shop Commands', value: '`/shop`\n`/redeem-menu`\n`/inventory`\n`/gift`\n`/daily`\n`/balance`\n`/profile`\n`/rewards`', inline: false },      { name: '⚙️ Staff Economy Commands', value: '`/add-money`\n`/remove-money`\n`/set-money`\n`/give-item`\n`/remove-item`', inline: false }
     )
     .setTimestamp();
 }
@@ -1134,8 +1144,7 @@ const commands = [
     .setName('declare-winner')
     .setDescription('Declare winners of a Siege custom game')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addStringOption(o => o.setName('host').setDescription('Host name').setRequired(true))
-    .addStringOption(o => o.setName('format').setDescription('Match format').setRequired(true)
+    .addUserOption(o => o.setName('host').setDescription('Host').setRequired(true))    .addStringOption(o => o.setName('format').setDescription('Match format').setRequired(true)
       .addChoices(
   { name: '1v1 Tournament', value: '1v1_tournament' },
   { name: '2v2 Best of One', value: '2v2_bo1' },
@@ -1216,9 +1225,10 @@ const commands = [
   new SlashCommandBuilder()
   .setName('shop')
   .setDescription('Open the interactive Matchpoint shop'),
+  
   new SlashCommandBuilder()
-    .setName('show-shop')
-    .setDescription('Show the MatchCoins shop'),
+  .setName('redeem-menu')
+  .setDescription('Open the interactive redeem menu'),
 
   new SlashCommandBuilder()
     .setName('inventory')
@@ -1233,10 +1243,6 @@ const commands = [
     .setName('daily')
     .setDescription('Claim daily MatchCoins'),
 
-  new SlashCommandBuilder()
-    .setName('buy')
-    .setDescription('Buy an item')
-    .addStringOption(o => o.setName('item_id').setDescription('Item ID').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('gift')
@@ -1248,15 +1254,6 @@ const commands = [
     .setName('open-crate')
     .setDescription('Open a crate from your inventory')
     .addStringOption(o => o.setName('crate_id').setDescription('Crate ID').setRequired(true)),
-
-    new SlashCommandBuilder()
-  .setName('redeem')
-  .setDescription('Redeem a coin item for MatchCoins')
-  .addStringOption(o =>
-    o.setName('item_id')
-      .setDescription('Coin item to redeem')
-      .setRequired(true)
-  ),
 
   new SlashCommandBuilder()
     .setName('add-money')
@@ -1357,6 +1354,40 @@ client.on('interactionCreate', async interaction => {
   await interaction.reply({ embeds: [embed], ephemeral: true });
   return;
 }
+if (interaction.isStringSelectMenu() && interaction.customId === 'redeem_coin') {
+  const itemId = interaction.values[0];
+  const item = SHOP_ITEMS[itemId];
+
+  if (!item || item.type !== 'coin') {
+    await interaction.reply({ content: '❌ That item cannot be redeemed.', ephemeral: true });
+    return;
+  }
+
+  const inventory = getInventory();
+  const economy = getEconomy();
+
+  ensureUserInventory(inventory, interaction.user.id);
+  ensureUserEconomy(economy, interaction.user.id);
+
+  const success = removeItem(inventory, interaction.user.id, itemId, 1);
+
+  if (!success) {
+    await interaction.reply({ content: `❌ You do not own **${item.name}**.`, ephemeral: true });
+    return;
+  }
+
+  economy[interaction.user.id].balance += item.coinValue;
+
+  saveInventory(inventory);
+  saveEconomy(economy);
+
+  await interaction.reply({
+    content: `💰 Redeemed **${item.name}** for **${formatCoins(item.coinValue)}**.`,
+    ephemeral: true
+  });
+
+  return;
+}
   if (!interaction.isChatInputCommand()) return;
   console.log(`Command used: ${interaction.commandName}`);
 
@@ -1421,10 +1452,41 @@ client.on('interactionCreate', async interaction => {
   return;
 }
 
-  if (interaction.commandName === 'show-shop') {
-    await interaction.reply({ embeds: [buildShopEmbed()] });
+if (interaction.commandName === 'redeem-menu') {
+  const inventory = getInventory();
+  const redeemableItems = getRedeemableItems(inventory, interaction.user.id);
+
+  if (!redeemableItems.length) {
+    await interaction.reply({
+      content: '❌ You do not have any coin items to redeem.',
+      ephemeral: true
+    });
     return;
   }
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('redeem_coin')
+    .setPlaceholder('Choose a coin item to redeem')
+    .addOptions(
+      redeemableItems.slice(0, 25).map(entry => ({
+        label: entry.item.name,
+        description: `${formatCoins(entry.item.coinValue)} | Owned: ${entry.amount}`,
+        value: entry.item.id
+      }))
+    );
+
+  const row = new ActionRowBuilder().addComponents(menu);
+
+  await interaction.reply({
+    content: '💰 Choose an item to redeem:',
+    components: [row],
+    ephemeral: true
+  });
+
+  return;
+}
+
+  
 
   if (interaction.commandName === 'inventory') {
     const target = interaction.options.getUser('user') ?? interaction.user;
@@ -1468,56 +1530,6 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  if (interaction.commandName === 'buy') {
-    const itemId = interaction.options.getString('item_id');
-    const item = SHOP_ITEMS[itemId];
-
-    if (!item) {
-      await interaction.reply('❌ Item not found. Use `/show-shop` to see item IDs.');
-      return;
-    }
-
-    if (!item.buyable) {
-      await interaction.reply(`❌ **${item.name}** cannot be bought from the shop.`);
-      return;
-    }
-
-    const economy = getEconomy();
-    const inventory = getInventory();
-    const userId = interaction.user.id;
-
-    ensureUserEconomy(economy, userId);
-    ensureUserInventory(inventory, userId);
-
-    if (economy[userId].balance < item.price) {
-      await interaction.reply(`❌ You need **${formatCoins(item.price)}**, but you only have **${formatCoins(economy[userId].balance)}**.`);
-      return;
-    }
-
-    economy[userId].balance -= item.price;
-    addItem(inventory, userId, itemId, 1);
-
-    const member = await interaction.guild.members.fetch(userId).catch(() => null);
-    if (member) await applyItemReward(member, item);
-
-    saveEconomy(economy);
-    saveInventory(inventory);
-
-    const rarityData = getRarityData(item.rarity);
-
-    const embed = new EmbedBuilder()
-      .setColor(rarityData.color)
-      .setTitle(`✅ Purchased ${item.name}`)
-      .setDescription(`${rarityData.emoji} **${item.rarity}**\n${item.description}`)
-      .addFields(
-        { name: 'Price', value: formatCoins(item.price), inline: true },
-        { name: 'New Balance', value: formatCoins(economy[userId].balance), inline: true }
-      )
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed] });
-    return;
-  }
 
   if (interaction.commandName === 'gift') {
     const target = interaction.options.getUser('user');
@@ -1617,49 +1629,7 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ embeds: [embed] });
     return;
   }
-  if (interaction.commandName === 'redeem') {
-  const itemId = interaction.options.getString('item_id');
-  const item = SHOP_ITEMS[itemId];
 
-  if (!item) {
-    await interaction.reply('❌ Item not found.');
-    return;
-  }
-
-  if (item.type !== 'coin') {
-    await interaction.reply('❌ Only coin items can be redeemed.');
-    return;
-  }
-
-  const inventory = getInventory();
-  const economy = getEconomy();
-
-  ensureUserInventory(inventory, interaction.user.id);
-  ensureUserEconomy(economy, interaction.user.id);
-
-  const success = removeItem(
-    inventory,
-    interaction.user.id,
-    itemId,
-    1
-  );
-
-  if (!success) {
-    await interaction.reply(`❌ You do not own **${item.name}**.`);
-    return;
-  }
-
-  economy[interaction.user.id].balance += item.coinValue;
-
-  saveInventory(inventory);
-  saveEconomy(economy);
-
-  await interaction.reply(
-    `💰 Redeemed **${item.name}** for **${formatCoins(item.coinValue)}**.`
-  );
-
-  return;
-}
     if (interaction.commandName === 'add-money') {
     const target = interaction.options.getUser('user');
     const amount = interaction.options.getInteger('amount');
@@ -2055,7 +2025,7 @@ client.on('interactionCreate', async interaction => {
   if (interaction.commandName === 'declare-winner') {
   await interaction.deferReply({ ephemeral: true });
 
-  const hostName = interaction.options.getString('host');
+  const hostUser = interaction.options.getUser('host');
   const format = interaction.options.getString('format');
 
   const rewardAmounts = {
@@ -2070,7 +2040,7 @@ client.on('interactionCreate', async interaction => {
   };
 
   const currency = rewardAmounts[format] ?? 0;
-  const matchName = `${hostName}'s ${format.replace(/_/g, ' ').toUpperCase()}`;
+  const matchName = `${hostUser.username}'s ${format.replace(/_/g, ' ').toUpperCase()}`;
   const notes = interaction.options.getString('notes') ?? '';
   const championRole = interaction.options.getRole('champion_role');
   const mvpUser = interaction.options.getUser('mvp');
@@ -2152,6 +2122,7 @@ client.on('interactionCreate', async interaction => {
       .setDescription(winnerEntries.map(entry => `<@${entry.user.id}>`).join(' · '))
       .addFields(
         [
+          { name: '🎙️ Host', value: `<@${hostUser.id}>`, inline: true },
           { name: '⭐ MVP', value: `<@${mvpUser.id}>`, inline: true },
           { name: '💰 MatchCoins Awarded', value: `${formatCoins(currency)} each`, inline: true },
           { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
