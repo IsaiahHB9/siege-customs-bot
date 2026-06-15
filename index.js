@@ -1279,7 +1279,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName('give-item')
     .setDescription('Give an item to a user')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption(o => o.setName('user').setDescription('User receiving item').setRequired(true))
     .addStringOption(o => o.setName('item_id').setDescription('Item ID').setRequired(true))
     .addIntegerOption(o => o.setName('amount').setDescription('Amount').setMinValue(1)),
@@ -1287,7 +1287,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName('remove-item')
     .setDescription('Remove an item from a user')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption(o => o.setName('user').setDescription('User losing item').setRequired(true))
     .addStringOption(o => o.setName('item_id').setDescription('Item ID').setRequired(true))
     .addIntegerOption(o => o.setName('amount').setDescription('Amount').setMinValue(1)),
