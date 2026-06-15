@@ -1,6 +1,5 @@
 const fs = require('fs');
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const TOKEN = process.env.BOT_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const RESULTS_CHANNEL_ID = process.env.RESULTS_CHANNEL_ID;
@@ -621,7 +620,7 @@ function buildShopEmbed() {
   const embed = new EmbedBuilder()
     .setColor(0xF97316)
     .setTitle('🛒 Matchpoint Shop')
-    .setDescription(`Use \`/buy item_id\` to purchase items with ${CURRENCY_NAME}.`)
+    .setDescription(`Use \`/shop\` to open the interactive shop and buy items with ${CURRENCY_NAME}.`)
     .setTimestamp();
 
   const rarityOrder = [
@@ -707,53 +706,13 @@ function buildHelpEmbed() {
   return new EmbedBuilder()
     .setColor(0xF97316)
     .setTitle('📘 Matchpoint Commands')
-    .setDescription('Commands available to all members.')
+    .setDescription('Commands available in Matchpoint.')
     .addFields(
-      {
-        name: '/balance',
-        value: 'View MatchCoins balance.',
-        inline: false
-      },
-      {
-        name: '/profile',
-        value: 'View your Matchpoint profile.',
-        inline: false
-      },
-      {
-        name: '/show-shop',
-        value: 'View every item available in the shop.',
-        inline: false
-      },
-      {
-        name: '/inventory',
-        value: 'View your inventory.',
-        inline: false
-      },
-      {
-        name: '/buy',
-        value: 'Purchase an item.',
-        inline: false
-      },
-      {
-        name: '/gift',
-        value: 'Gift eligible items to another user.',
-        inline: false
-      },
-      {
-        name: '/open-crate',
-        value: 'Open a crate and receive 5 rewards.',
-        inline: false
-      },
-      {
-        name: '/daily',
-        value: 'Claim daily MatchCoins.',
-        inline: false
-      },
-      {
-        name: '/rewards',
-        value: 'View reward values and crate odds.',
-        inline: false
-      }
+      { name: '📋 Draft Commands', value: '`/draft-create`\n`/draft-pick`\n`/draft-show`', inline: false },
+      { name: '🗺️ Map Ban Commands', value: '`/mapban-create`\n`/mapban-ban`\n`/mapban-show`', inline: false },
+      { name: '🏆 Match & Stats Commands', value: '`/declare-winner`\n`/record-kills`\n`/remove-stats`\n`/leaderboard`', inline: false },
+      { name: '🛒 Shop Commands', value: '`/shop`\n`/show-shop`\n`/buy`\n`/inventory`\n`/redeem`\n`/gift`\n`/daily`\n`/balance`\n`/profile`\n`/rewards`', inline: false },
+      { name: '⚙️ Staff Economy Commands', value: '`/add-money`\n`/remove-money`\n`/set-money`\n`/give-item`\n`/remove-item`', inline: false }
     )
     .setTimestamp();
 }
@@ -1118,19 +1077,75 @@ const client = new Client({
 });
 const commands = [
   new SlashCommandBuilder()
+    .setName('draft-create')
+    .setDescription('Create a draft with captains')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addStringOption(o => o.setName('name').setDescription('Draft or tournament name').setRequired(true))
+    .addStringOption(o => o.setName('format').setDescription('Draft format').setRequired(true)
+      .addChoices(
+        { name: '1v1', value: '1v1' },
+        { name: '2v2', value: '2v2' },
+        { name: '3v3', value: '3v3' },
+        { name: '4v4', value: '4v4' },
+        { name: '5v5', value: '5v5' }
+      ))
+    .addIntegerOption(o => o.setName('teams').setDescription('Number of teams').setRequired(true).setMinValue(2).setMaxValue(8))
+    .addUserOption(o => o.setName('captain1').setDescription('Captain 1').setRequired(true))
+    .addUserOption(o => o.setName('captain2').setDescription('Captain 2').setRequired(true))
+    .addUserOption(o => o.setName('captain3').setDescription('Captain 3'))
+    .addUserOption(o => o.setName('captain4').setDescription('Captain 4'))
+    .addUserOption(o => o.setName('captain5').setDescription('Captain 5'))
+    .addUserOption(o => o.setName('captain6').setDescription('Captain 6'))
+    .addUserOption(o => o.setName('captain7').setDescription('Captain 7'))
+    .addUserOption(o => o.setName('captain8').setDescription('Captain 8')),
+
+  new SlashCommandBuilder()
+    .setName('draft-pick')
+    .setDescription('Add a player pick to a draft team')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addIntegerOption(o => o.setName('team').setDescription('Team number').setRequired(true).setMinValue(1).setMaxValue(8))
+    .addUserOption(o => o.setName('player').setDescription('Player being picked').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('draft-show')
+    .setDescription('Show the current draft teams'),
+
+    new SlashCommandBuilder()
+    .setName('mapban-create')
+    .setDescription('Create a map ban board')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addStringOption(o => o.setName('name').setDescription('Match or tournament name').setRequired(true))
+    .addUserOption(o => o.setName('team1_captain').setDescription('Team 1 captain').setRequired(true))
+    .addUserOption(o => o.setName('team2_captain').setDescription('Team 2 captain').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('mapban-ban')
+    .setDescription('Ban a map for a team')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addIntegerOption(o => o.setName('team').setDescription('Team banning the map').setRequired(true).setMinValue(1).setMaxValue(2))
+    .addStringOption(o => o.setName('map').setDescription('Map to ban').setRequired(true)
+      .addChoices(...MAP_POOL.map(map => ({ name: map, value: map })))),
+
+  new SlashCommandBuilder()
+    .setName('mapban-show')
+    .setDescription('Show the current map ban board'),
+
+  new SlashCommandBuilder()
     .setName('declare-winner')
     .setDescription('Declare winners of a Siege custom game')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .addStringOption(o => o.setName('host').setDescription('Host name').setRequired(true))
     .addStringOption(o => o.setName('format').setDescription('Match format').setRequired(true)
       .addChoices(
-        { name: '1v1 Tournament', value: '1v1_tournament' },
-        { name: '2v2 Best of One', value: '2v2_bo1' },
-        { name: '3v3 Best of One', value: '3v3_bo1' },
-        { name: '4v4 Best of One', value: '4v4_bo1' },
-        { name: '5v5 Best of One', value: '5v5_bo1' },
-        { name: '5v5 Tournament', value: '5v5_tournament' }
-      ))
+  { name: '1v1 Tournament', value: '1v1_tournament' },
+  { name: '2v2 Best of One', value: '2v2_bo1' },
+  { name: '3v3 Best of One', value: '3v3_bo1' },
+  { name: '4v4 Best of One', value: '4v4_bo1' },
+  { name: '5v5 Best of One', value: '5v5_bo1' },
+  { name: 'Small Tournament', value: '5v5_tournament' },
+  { name: '8 Team Tournament', value: '8_team_tournament' },
+  { name: '16 Team Tournament', value: '16_team_tournament' }
+))
     .addUserOption(o => o.setName('mvp').setDescription('MVP of the match').setRequired(true))
     .addUserOption(o => o.setName('winner1').setDescription('Winner #1').setRequired(true))
     .addUserOption(o => o.setName('winner2').setDescription('Winner #2'))
@@ -1138,8 +1153,8 @@ const commands = [
     .addUserOption(o => o.setName('winner4').setDescription('Winner #4'))
     .addUserOption(o => o.setName('winner5').setDescription('Winner #5'))
     .addRoleOption(o => o.setName('champion_role').setDescription('Tournament champion role'))
-    .addIntegerOption(o => o.setName('currency').setDescription('MatchCoins to award each winner').setMinValue(0))
     .addStringOption(o => o.setName('notes').setDescription('Optional match notes')),
+
 
   new SlashCommandBuilder()
     .setName('record-kills')
@@ -1179,59 +1194,6 @@ const commands = [
       ))
     .addIntegerOption(o => o.setName('amount').setDescription('Amount to remove').setRequired(true).setMinValue(1)),
 
-  new SlashCommandBuilder()
-    .setName('draft-create')
-    .setDescription('Create a draft with captains')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addStringOption(o => o.setName('name').setDescription('Draft or tournament name').setRequired(true))
-    .addStringOption(o => o.setName('format').setDescription('Draft format').setRequired(true)
-      .addChoices(
-        { name: '1v1', value: '1v1' },
-        { name: '2v2', value: '2v2' },
-        { name: '3v3', value: '3v3' },
-        { name: '4v4', value: '4v4' },
-        { name: '5v5', value: '5v5' }
-      ))
-    .addIntegerOption(o => o.setName('teams').setDescription('Number of teams').setRequired(true).setMinValue(2).setMaxValue(8))
-    .addUserOption(o => o.setName('captain1').setDescription('Captain 1').setRequired(true))
-    .addUserOption(o => o.setName('captain2').setDescription('Captain 2').setRequired(true))
-    .addUserOption(o => o.setName('captain3').setDescription('Captain 3'))
-    .addUserOption(o => o.setName('captain4').setDescription('Captain 4'))
-    .addUserOption(o => o.setName('captain5').setDescription('Captain 5'))
-    .addUserOption(o => o.setName('captain6').setDescription('Captain 6'))
-    .addUserOption(o => o.setName('captain7').setDescription('Captain 7'))
-    .addUserOption(o => o.setName('captain8').setDescription('Captain 8')),
-
-  new SlashCommandBuilder()
-    .setName('draft-pick')
-    .setDescription('Add a player pick to a draft team')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addIntegerOption(o => o.setName('team').setDescription('Team number').setRequired(true).setMinValue(1).setMaxValue(8))
-    .addUserOption(o => o.setName('player').setDescription('Player being picked').setRequired(true)),
-
-  new SlashCommandBuilder()
-    .setName('draft-show')
-    .setDescription('Show the current draft teams'),
-
-  new SlashCommandBuilder()
-    .setName('mapban-create')
-    .setDescription('Create a map ban board')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addStringOption(o => o.setName('name').setDescription('Match or tournament name').setRequired(true))
-    .addUserOption(o => o.setName('team1_captain').setDescription('Team 1 captain').setRequired(true))
-    .addUserOption(o => o.setName('team2_captain').setDescription('Team 2 captain').setRequired(true)),
-
-  new SlashCommandBuilder()
-    .setName('mapban-ban')
-    .setDescription('Ban a map for a team')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addIntegerOption(o => o.setName('team').setDescription('Team banning the map').setRequired(true).setMinValue(1).setMaxValue(2))
-    .addStringOption(o => o.setName('map').setDescription('Map to ban').setRequired(true)
-      .addChoices(...MAP_POOL.map(map => ({ name: map, value: map })))),
-
-  new SlashCommandBuilder()
-    .setName('mapban-show')
-    .setDescription('Show the current map ban board'),
 
   new SlashCommandBuilder()
     .setName('leaderboard')
@@ -1251,6 +1213,9 @@ const commands = [
     .setDescription('View a Matchpoint profile')
     .addUserOption(o => o.setName('user').setDescription('User to check')),
 
+  new SlashCommandBuilder()
+  .setName('shop')
+  .setDescription('Open the interactive Matchpoint shop'),
   new SlashCommandBuilder()
     .setName('show-shop')
     .setDescription('Show the MatchCoins shop'),
@@ -1344,6 +1309,54 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
+  if (interaction.isStringSelectMenu() && interaction.customId === 'shop_buy') {
+  const itemId = interaction.values[0];
+  const item = SHOP_ITEMS[itemId];
+
+  if (!item || !item.buyable) {
+    await interaction.reply({ content: '❌ Item not found or not buyable.', ephemeral: true });
+    return;
+  }
+
+  const economy = getEconomy();
+  const inventory = getInventory();
+  const userId = interaction.user.id;
+
+  ensureUserEconomy(economy, userId);
+  ensureUserInventory(inventory, userId);
+
+  if (economy[userId].balance < item.price) {
+    await interaction.reply({
+      content: `❌ You need **${formatCoins(item.price)}**, but you only have **${formatCoins(economy[userId].balance)}**.`,
+      ephemeral: true
+    });
+    return;
+  }
+
+  economy[userId].balance -= item.price;
+  addItem(inventory, userId, itemId, 1);
+
+  const member = await interaction.guild.members.fetch(userId).catch(() => null);
+  if (member) await applyItemReward(member, item);
+
+  saveEconomy(economy);
+  saveInventory(inventory);
+
+  const rarityData = getRarityData(item.rarity);
+
+  const embed = new EmbedBuilder()
+    .setColor(rarityData.color)
+    .setTitle(`✅ Purchased ${item.name}`)
+    .setDescription(`${rarityData.emoji} **${item.rarity}**\n${item.description}`)
+    .addFields(
+      { name: 'Price', value: formatCoins(item.price), inline: true },
+      { name: 'New Balance', value: formatCoins(economy[userId].balance), inline: true }
+    )
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed], ephemeral: true });
+  return;
+}
   if (!interaction.isChatInputCommand()) return;
   console.log(`Command used: ${interaction.commandName}`);
 
@@ -1383,6 +1396,30 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ embeds: [embed] });
     return;
   }
+
+  if (interaction.commandName === 'shop') {
+  const buyableItems = getBuyableItems();
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('shop_buy')
+    .setPlaceholder('Choose an item to buy')
+    .addOptions(
+      buyableItems.map(item => ({
+        label: item.name,
+        description: `${formatCoins(item.price)} | ${item.rarity}`,
+        value: item.id
+      }))
+    );
+
+  const row = new ActionRowBuilder().addComponents(menu);
+
+  await interaction.reply({
+    embeds: [buildShopEmbed()],
+    components: [row]
+  });
+
+  return;
+}
 
   if (interaction.commandName === 'show-shop') {
     await interaction.reply({ embeds: [buildShopEmbed()] });
@@ -2014,123 +2051,134 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ embeds: [buildMapBanEmbed(mapban)] });
     return;
   }
-   if (interaction.commandName === 'declare-winner') {
-    await interaction.deferReply({ ephemeral: true });
 
-    const hostName = interaction.options.getString('host');
-    const format = interaction.options.getString('format');
-    const matchName = `${hostName}'s ${format.replace(/_/g, ' ').toUpperCase()}`;
-    const currency = interaction.options.getInteger('currency') ?? 0;
-    const notes = interaction.options.getString('notes') ?? '';
-    const championRole = interaction.options.getRole('champion_role');
-    const mvpUser = interaction.options.getUser('mvp');
-    const isTournament = format.includes('tournament');
-    const trophyRole = interaction.guild.roles.cache.find(r => r.name === 'Draft Winner');
+  if (interaction.commandName === 'declare-winner') {
+  await interaction.deferReply({ ephemeral: true });
 
-    const winnerEntries = [1, 2, 3, 4, 5]
-      .map(n => {
-        const user = interaction.options.getUser(`winner${n}`);
-        if (!user) return null;
-        return { user };
-      })
-      .filter(Boolean);
+  const hostName = interaction.options.getString('host');
+  const format = interaction.options.getString('format');
 
-    const stats = readJson(STATS_FILE);
-    const economy = getEconomy();
+  const rewardAmounts = {
+    '1v1_tournament': 5000,
+    '2v2_bo1': 750,
+    '3v3_bo1': 1000,
+    '4v4_bo1': 1500,
+    '5v5_bo1': 2000,
+    '5v5_tournament': 5000,
+    '8_team_tournament': 15000,
+    '16_team_tournament': 30000
+  };
 
-    for (const entry of winnerEntries) {
-      const user = entry.user;
+  const currency = rewardAmounts[format] ?? 0;
+  const matchName = `${hostName}'s ${format.replace(/_/g, ' ').toUpperCase()}`;
+  const notes = interaction.options.getString('notes') ?? '';
+  const championRole = interaction.options.getRole('champion_role');
+  const mvpUser = interaction.options.getUser('mvp');
+  const isTournament = format.includes('tournament');
+  const trophyRole = interaction.guild.roles.cache.find(r => r.name === 'Draft Winner');
 
-      if (!stats[user.id]) stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
-      if (stats[user.id].wins === undefined) stats[user.id].wins = 0;
-      if (stats[user.id].mvps === undefined) stats[user.id].mvps = 0;
-      if (stats[user.id].kills === undefined) stats[user.id].kills = 0;
+  const winnerEntries = [1, 2, 3, 4, 5]
+    .map(n => {
+      const user = interaction.options.getUser(`winner${n}`);
+      if (!user) return null;
+      return { user };
+    })
+    .filter(Boolean);
 
-      stats[user.id].wins += 1;
+  const stats = readJson(STATS_FILE);
+  const economy = getEconomy();
 
-      ensureUserEconomy(economy, user.id);
-      economy[user.id].balance += currency;
+  for (const entry of winnerEntries) {
+    const user = entry.user;
 
-      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    if (!stats[user.id]) stats[user.id] = { wins: 0, mvps: 0, kills: 0 };
+    if (stats[user.id].wins === undefined) stats[user.id].wins = 0;
+    if (stats[user.id].mvps === undefined) stats[user.id].mvps = 0;
+    if (stats[user.id].kills === undefined) stats[user.id].kills = 0;
 
-      if (member) {
-        if (trophyRole) await member.roles.add(trophyRole).catch(console.error);
-        await updateStatRoles(member, stats);
-      }
+    stats[user.id].wins += 1;
+
+    ensureUserEconomy(economy, user.id);
+    economy[user.id].balance += currency;
+
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+
+    if (member) {
+      if (trophyRole) await member.roles.add(trophyRole).catch(console.error);
+      await updateStatRoles(member, stats);
     }
+  }
 
-    if (!stats[mvpUser.id]) stats[mvpUser.id] = { wins: 0, mvps: 0, kills: 0 };
-    if (stats[mvpUser.id].wins === undefined) stats[mvpUser.id].wins = 0;
-    if (stats[mvpUser.id].mvps === undefined) stats[mvpUser.id].mvps = 0;
-    if (stats[mvpUser.id].kills === undefined) stats[mvpUser.id].kills = 0;
+  if (!stats[mvpUser.id]) stats[mvpUser.id] = { wins: 0, mvps: 0, kills: 0 };
+  if (stats[mvpUser.id].wins === undefined) stats[mvpUser.id].wins = 0;
+  if (stats[mvpUser.id].mvps === undefined) stats[mvpUser.id].mvps = 0;
+  if (stats[mvpUser.id].kills === undefined) stats[mvpUser.id].kills = 0;
 
-    stats[mvpUser.id].mvps += 1;
+  stats[mvpUser.id].mvps += 1;
 
-    const mvpMember = await interaction.guild.members.fetch(mvpUser.id).catch(() => null);
-    if (mvpMember) await updateStatRoles(mvpMember, stats);
+  const mvpMember = await interaction.guild.members.fetch(mvpUser.id).catch(() => null);
+  if (mvpMember) await updateStatRoles(mvpMember, stats);
 
-    writeJson(STATS_FILE, stats);
-    saveEconomy(economy);
+  writeJson(STATS_FILE, stats);
+  saveEconomy(economy);
 
-    await updateScoreboard(interaction.guild, stats);
-    await updateKillLeaders(interaction.guild, stats);
-    await updateKillerOfChampionsRole(interaction.guild, stats);
+  await updateScoreboard(interaction.guild, stats);
+  await updateKillLeaders(interaction.guild, stats);
+  await updateKillerOfChampionsRole(interaction.guild, stats);
 
-    if (championRole && isTournament) {
-      await interaction.guild.members.fetch().catch(() => null);
+  if (championRole && isTournament) {
+    await interaction.guild.members.fetch().catch(() => null);
 
-      const membersWithRole = interaction.guild.members.cache.filter(m =>
-        m.roles.cache.has(championRole.id)
-      );
-
-      for (const [, member] of membersWithRole) {
-        await member.roles.remove(championRole).catch(console.error);
-      }
-
-      for (const entry of winnerEntries) {
-        const member = await interaction.guild.members.fetch(entry.user.id).catch(() => null);
-        if (member) await member.roles.add(championRole).catch(console.error);
-      }
-    }
-
-    const resultsChannel = interaction.guild.channels.cache.get(RESULTS_CHANNEL_ID);
-
-    if (resultsChannel) {
-      const embed = new EmbedBuilder()
-        .setColor(0xF97316)
-        .setTitle(`🏆 ${matchName} — Winner${winnerEntries.length > 1 ? 's' : ''} Declared!`)
-        .setDescription(winnerEntries.map(entry => `<@${entry.user.id}>`).join(' · '))
-        .addFields(
-          [
-            { name: '⭐ MVP', value: `<@${mvpUser.id}>`, inline: true },
-            { name: '💰 MatchCoins Awarded', value: `${formatCoins(currency)} each`, inline: true },
-            { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
-            trophyRole ? { name: '🛡️ Draft Winner Role', value: trophyRole.toString(), inline: true } : null,
-            championRole && isTournament ? { name: '👑 Champion Role', value: championRole.toString(), inline: true } : null,
-            notes ? { name: '📝 Notes', value: notes } : null,
-          ].filter(Boolean)
-        )
-        .setFooter({ text: `Declared by ${interaction.user.username}` })
-        .setTimestamp();
-
-      await resultsChannel.send({ embeds: [embed] });
-    }
-
-    await interaction.editReply(
-      `✅ **Match recorded!**\n` +
-      `🏆 Match: **${matchName}**\n` +
-      `⭐ MVP: **${mvpUser.username}**\n` +
-      `💰 Winners received **${formatCoins(currency)}** each.`
+    const membersWithRole = interaction.guild.members.cache.filter(m =>
+      m.roles.cache.has(championRole.id)
     );
 
-    return;
-  }
-});
+    for (const [, member] of membersWithRole) {
+      await member.roles.remove(championRole).catch(console.error);
+    }
 
+    for (const entry of winnerEntries) {
+      const member = await interaction.guild.members.fetch(entry.user.id).catch(() => null);
+      if (member) await member.roles.add(championRole).catch(console.error);
+    }
+  }
+
+  const resultsChannel = interaction.guild.channels.cache.get(RESULTS_CHANNEL_ID);
+
+  if (resultsChannel) {
+    const embed = new EmbedBuilder()
+      .setColor(0xF97316)
+      .setTitle(`🏆 ${matchName} — Winner${winnerEntries.length > 1 ? 's' : ''} Declared!`)
+      .setDescription(winnerEntries.map(entry => `<@${entry.user.id}>`).join(' · '))
+      .addFields(
+        [
+          { name: '⭐ MVP', value: `<@${mvpUser.id}>`, inline: true },
+          { name: '💰 MatchCoins Awarded', value: `${formatCoins(currency)} each`, inline: true },
+          { name: '🎮 Format', value: format.replace(/_/g, ' ').toUpperCase(), inline: true },
+          trophyRole ? { name: '🛡️ Draft Winner Role', value: trophyRole.toString(), inline: true } : null,
+          championRole && isTournament ? { name: '👑 Champion Role', value: championRole.toString(), inline: true } : null,
+          notes ? { name: '📝 Notes', value: notes } : null,
+        ].filter(Boolean)
+      )
+      .setFooter({ text: `Declared by ${interaction.user.username}` })
+      .setTimestamp();
+
+    await resultsChannel.send({ embeds: [embed] });
+  }
+
+  await interaction.editReply(
+    `✅ **Match recorded!**\n` +
+    `🏆 Match: **${matchName}**\n` +
+    `⭐ MVP: **${mvpUser.username}**\n` +
+    `💰 Winners received **${formatCoins(currency)}** each.`
+  );
+
+  return;
+}
+});
 process.on('unhandledRejection', error => {
   console.error('UNHANDLED REJECTION:', error);
 });
-
 process.on('uncaughtException', error => {
   console.error('UNCAUGHT EXCEPTION:', error);
 });
